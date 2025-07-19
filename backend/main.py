@@ -21,7 +21,8 @@ origins = [
     "http://localhost:8080",
     "http://127.0.0.1",
     "http://127.0.0.1:8080",
-    # Add other origins if your frontend is served from a different address
+    # IMPORTANT: Add the URL of your deployed Vercel frontend here
+    "https://ai-resume-analyser-mtrg-k4egexp0v-darshan-aimls-projects.vercel.app", 
 ]
 
 app.add_middleware(
@@ -44,16 +45,15 @@ def read_root():
 async def process_resumes(files: List[UploadFile] = File(...)):
     """
     Endpoint to upload multiple PDF resumes.
-    The files are saved and then processed into a FAISS vector store.
+    The files are saved and then processed into a vector store.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files were uploaded.")
 
-    # Create a directory to store resumes if it doesn't exist
-    resumes_dir = "resumes"
+    # In a serverless environment, we need a temporary directory
+    resumes_dir = "/tmp/resumes"
     os.makedirs(resumes_dir, exist_ok=True)
     
-    # Save uploaded files to the directory
     saved_files = []
     for file in files:
         file_path = os.path.join(resumes_dir, file.filename)
