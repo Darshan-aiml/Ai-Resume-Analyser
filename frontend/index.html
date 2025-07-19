@@ -52,7 +52,6 @@
                 <h2 class="text-2xl font-bold text-white mb-2">Stage 1: Ingestion</h2>
                 <p class="text-gray-400 mb-6">Upload a PDF resume to build the knowledge base for this session.</p>
                 
-                <!-- UPDATED: Removed the 'multiple' attribute to allow only one file upload at a time -->
                 <input type="file" id="pdf-upload-input" class="hidden" accept="application/pdf">
                 <button id="pdf-upload-btn" class="w-full bg-white/10 hover:bg-white/20 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all duration-300 mb-4">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
@@ -147,6 +146,16 @@
         pdfUploadInput.addEventListener('change', (event) => {
             uploadedFiles = Array.from(event.target.files);
             fileList.innerHTML = '';
+
+            // NEW: Clear all previous results and statuses when a new file is selected
+            answerOutput.innerHTML = '<p class="text-gray-400">The AI-generated answer will appear here.</p>';
+            retrievedContext.innerHTML = '<p>The most relevant text chunks from the resume will be shown here after you ask a question.</p>';
+            updateStatus('');
+            questionInput.disabled = true;
+            askBtn.disabled = true;
+            questionInput.placeholder = "Process a resume to enable Q&A";
+
+
             if (uploadedFiles.length > 0) {
                 const list = document.createElement('ul');
                 list.className = 'list-disc list-inside text-gray-300';
