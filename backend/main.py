@@ -90,19 +90,3 @@ async def ask_question(question: Question):
     except Exception as e:
         # Handle errors, e.g., if the vector store doesn't exist yet
         raise HTTPException(status_code=500, detail=str(e))
-@app.post("/reset-index/")
-def reset_index():
-    from pinecone import Pinecone
-    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    index = pc.Index("resume-analyser")
-    index.delete(delete_all=True)
-
-    # Reset QA_CHAIN from rag_core (if cached)
-    import rag_core
-    rag_core.QA_CHAIN = None
-
-    return {"message": "Resume data reset successfully."}
-        
-        
-        
-
