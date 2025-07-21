@@ -1,128 +1,99 @@
-# backend/rag_core.py
-# This file contains the core RAG logic using LangChain, Google, and Pinecone.
+# backend/main.py
+# This file creates the FastAPI application and its API endpoints.
 
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import rag_core
 import os
-from dotenv import load_dotenv
+from typing import List
+import re
 
-# LangChain, Google, and Pinecone components
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_pinecone import Pinecone as PineconeLangChain
-from langchain.chains import RetrievalQA
-# We need the main pinecone library to manage the index
-import pinecone
-# UPDATED: Using the correct top-level import for the exception
-from pinecone import ApiException
+# Initialize the FastAPI app
+app = FastAPI(
+    title="AI Resume Analyzer API",
+    description="An API for processing resumes and answering questions using a RAG pipeline.",
+)
 
-# --- Configuration ---
-load_dotenv()
+# Configure CORS (Cross-Origin Resource Sharing)
+# This now uses a regular expression to allow any Vercel deployment URL
+# for your project, which is a more robust solution for preview and production URLs.
+origins = [
+    "http://localhost",
+    "http://localhost:8080",
+    "http://127.0.0.1",
+    "http://127.0.0.1:8080",
+]
 
-# Check for API Keys
-if not os.getenv("GOOGLE_API_KEY"):
-    raise EnvironmentError("GOOGLE_API_KEY not found in .env file.")
-if not os.getenv("PINECONE_API_KEY"):
-    raise EnvironmentError("PINECONE_API_KEY not found in .env file.")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_origin_regex=r"https://ai-resume-analyser.*\.vercel\.app", # Allows all your Vercel subdomains
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-PINECONE_INDEX_NAME = "resume-analyser"
-QA_CHAIN = None
+# --- API Endpoints ---
 
-def clear_index():
+@app.get("/", summary="Root endpoint to check server status")
+def read_root():
+    """A simple endpoint to confirm the server is running."""
+    return {"status": "AI Resume Analyzer API is running."}
+
+
+@app.post("/process-resumes/", summary="Upload and process resumes")
+async def process_resumes(files: List[UploadFile] = File(...)):
     """
-    Connects to the Pinecone index and deletes all vectors. Handles errors gracefully if the index is already empty.
+    Endpoint to upload PDF resumes. The files are saved and then
+    processed into a vector store, clearing any old data.
     """
-    print(f"Connecting to Pinecone index '{PINECONE_INDEX_NAME}' to clear all data...")
-    pc = pinecone.Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    if not files:
+        raise HTTPException(status_code=400, detail="No files were uploaded.")
+
+    resumes_dir = "/tmp/resumes"
+    os.makedirs(resumes_dir, exist_ok=True)
     
-    if PINECONE_INDEX_NAME in pc.list_indexes().names():
-        index = pc.Index(PINECONE_INDEX_NAME)
-        print("Attempting to clear all records from the index...")
-        
-        try:
-            index.delete(delete_all=True)
-            print("Index cleared successfully.")
-        except ApiException as e:
-            if e.status == 404:
-                print("Index was already empty or namespace not found, which is okay. Considering it cleared.")
-            else:
-                print(f"An unexpected Pinecone API error occurred: {e}")
-        except Exception as e:
-            print(f"A general error occurred while clearing the index: {e}")
-    else:
-        print(f"Index '{PINECONE_INDEX_NAME}' not found. Nothing to clear.")
+    for file in files:
+        file_path = os.path.join(resumes_dir, file.filename)
+        with open(file_path, "wb") as buffer:
+            buffer.write(await file.read())
 
-    global QA_CHAIN
-    QA_CHAIN = None
+    try:
+        rag_core.create_vector_store(resumes_dir)
+        return {"message": f"Successfully processed {len(files)} resume(s)."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process resumes: {str(e)}")
 
-def create_vector_store(resumes_path: str):
+
+# Endpoint to reset the session
+@app.post("/reset/", summary="Reset the session")
+async def reset_session():
     """
-    Clears the old data, loads new resumes, splits them, creates embeddings, 
-    and upserts them to the Pinecone index.
+    Endpoint to clear all data from the Pinecone index.
+    This effectively resets the knowledge base for a new user session.
     """
-    clear_index()
+    try:
+        rag_core.clear_index()
+        return {"message": "Session reset successfully. The knowledge base is now empty."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reset session: {str(e)}")
 
-    print(f"Loading resumes from '{resumes_path}'...")
-    loader = DirectoryLoader(
-        resumes_path,
-        glob="*.pdf",
-        loader_cls=PyPDFLoader,
-        show_progress=True,
-        use_multithreading=True
-    )
-    documents = loader.load()
 
-    if not documents:
-        raise ValueError(f"No PDF files found in '{resumes_path}'.")
+class Question(BaseModel):
+    query: str
 
-    print(f"Splitting {len(documents)} document(s) into chunks...")
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    texts = text_splitter.split_documents(documents)
-
-    print("Generating embeddings with Google's 'text-embedding-004' model...")
-    embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
-    
-    print(f"Upserting new documents to Pinecone index '{PINECONE_INDEX_NAME}'...")
-    PineconeLangChain.from_documents(texts, embeddings, index_name=PINECONE_INDEX_NAME)
-    
-    print("Documents successfully added to Pinecone.")
-
-def initialize_qa_chain():
+@app.post("/ask/", summary="Ask a question about the resumes")
+async def ask_question(question: Question):
     """
-    Connects to the Pinecone index and initializes the RetrievalQA chain.
+    Endpoint to ask a question. It uses the existing vector store
+    to find relevant context and generate an answer.
     """
-    global QA_CHAIN
-    if QA_CHAIN is not None:
-        return
-
-    print("Initializing QA chain from Pinecone with Google models...")
-    embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
-    
-    vector_store = PineconeLangChain.from_existing_index(PINECONE_INDEX_NAME, embeddings)
-    
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
-    
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", temperature=0.2, convert_system_message_to_human=True)
-    
-    QA_CHAIN = RetrievalQA.from_chain_type(
-        llm=llm,
-        chain_type="stuff",
-        retriever=retriever,
-        return_source_documents=True
-    )
-    print("QA chain is ready.")
-
-def get_answer(query: str) -> dict:
-    """
-    Takes a user query, runs it through the QA chain, and returns the result.
-    """
-    if QA_CHAIN is None:
-        initialize_qa_chain()
-        
-    print(f"Running query: '{query}'")
-    result = QA_CHAIN.invoke({"query": query})
-    
-    if 'source_documents' in result:
-        for doc in result['source_documents']:
-            doc.metadata['source'] = os.path.basename(doc.metadata.get('source', 'Unknown'))
-            
-    return result
+    try:
+        answer_data = rag_core.get_answer(question.query)
+        return {
+            "answer": answer_data.get("result", "No answer found."),
+            "sources": answer_data.get("source_documents", [])
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
