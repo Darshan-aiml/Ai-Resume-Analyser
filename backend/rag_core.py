@@ -28,22 +28,26 @@ QA_CHAIN = None
 
 def clear_index():
     """
-    Connects to the Pinecone index and deletes all vectors, effectively clearing the knowledge base.
+    Connects to the Pinecone index and deletes all vectors if the index is not empty.
     """
     print(f"Connecting to Pinecone index '{PINECONE_INDEX_NAME}' to clear all data...")
     pc = pinecone.Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     
     if PINECONE_INDEX_NAME in pc.list_indexes().names():
         index = pc.Index(PINECONE_INDEX_NAME)
-        print("Clearing all records from the index...")
-        # UPDATED: Wrap the delete call in a try/except block to handle empty indexes gracefully.
+        print("Checking index stats before clearing...")
+        
         try:
-            index.delete(delete_all=True)
-            print("Index cleared successfully.")
-        except NotFoundException:
-            print("Index was already empty. Nothing to clear.")
+            # Check the number of vectors in the index
+            index_stats = index.describe_index_stats()
+            if index_stats.total_vector_count > 0:
+                print(f"Index contains {index_stats.total_vector_count} vectors. Clearing all records...")
+                index.delete(delete_all=True)
+                print("Index cleared successfully.")
+            else:
+                print("Index is already empty. Nothing to clear.")
         except Exception as e:
-            print(f"An unexpected error occurred while clearing the index: {e}")
+            print(f"An error occurred while checking or clearing the index: {e}")
 
     else:
         print(f"Index '{PINECONE_INDEX_NAME}' not found. Nothing to clear.")
@@ -125,8 +129,3 @@ def get_answer(query: str) -> dict:
             doc.metadata['source'] = os.path.basename(doc.metadata.get('source', 'Unknown'))
             
     return result
-```
-
-I've wrapped the `index.delete()` command in a `try...except` block. This will now gracefully handle cases where the index is already empty, preventing the crash and allowing your application to proceed correctly.
-
-To apply this fix, please update your `backend/rag_core.py` file with this new code and push the change to your GitHub repository. This will trigger a redeployment on Render and resolve the err
