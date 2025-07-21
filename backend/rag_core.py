@@ -8,9 +8,10 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-# UPDATED: Using the dedicated langchain-pinecone integration package
 from langchain_pinecone import Pinecone as PineconeLangChain
 from langchain.chains import RetrievalQA
+# We need the main pinecone library to manage the index
+import pinecone
 
 # --- Configuration ---
 load_dotenv()
@@ -20,17 +21,37 @@ if not os.getenv("GOOGLE_API_KEY"):
     raise EnvironmentError("GOOGLE_API_KEY not found in .env file.")
 if not os.getenv("PINECONE_API_KEY"):
     raise EnvironmentError("PINECONE_API_KEY not found in .env file.")
-# Note: PINECONE_ENVIRONMENT is also read automatically from the environment
 
-# CORRECTED: Changed the index name to match the one in your Pinecone project.
-PINECONE_INDEX_NAME = "resume-analyser" # Use the name of the index you just created
+PINECONE_INDEX_NAME = "resume-analyser"
 QA_CHAIN = None
+
+def clear_index():
+    """
+    Connects to the Pinecone index and deletes all vectors, effectively clearing the knowledge base.
+    """
+    print(f"Connecting to Pinecone index '{PINECONE_INDEX_NAME}' to clear all data...")
+    pc = pinecone.Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    
+    if PINECONE_INDEX_NAME in pc.list_indexes().names():
+        index = pc.Index(PINECONE_INDEX_NAME)
+        print("Clearing all records from the index...")
+        index.delete(delete_all=True)
+        print("Index cleared successfully.")
+    else:
+        print(f"Index '{PINECONE_INDEX_NAME}' not found. Nothing to clear.")
+
+    # Reset the global QA chain to force re-initialization on next query
+    global QA_CHAIN
+    QA_CHAIN = None
 
 def create_vector_store(resumes_path: str):
     """
-    Loads resumes, splits them, creates Google embeddings, and upserts them
-    to a Pinecone index.
+    Clears the old data, loads new resumes, splits them, creates embeddings, 
+    and upserts them to the Pinecone index.
     """
+    # Use the dedicated clear function to ensure a fresh start
+    clear_index()
+
     print(f"Loading resumes from '{resumes_path}'...")
     loader = DirectoryLoader(
         resumes_path,
@@ -51,13 +72,10 @@ def create_vector_store(resumes_path: str):
     print("Generating embeddings with Google's 'text-embedding-004' model...")
     embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
     
-    print(f"Upserting documents to Pinecone index '{PINECONE_INDEX_NAME}'...")
-    # LangChain's Pinecone class will use the environment variables automatically.
+    print(f"Upserting new documents to Pinecone index '{PINECONE_INDEX_NAME}'...")
     PineconeLangChain.from_documents(texts, embeddings, index_name=PINECONE_INDEX_NAME)
     
     print("Documents successfully added to Pinecone.")
-    global QA_CHAIN
-    QA_CHAIN = None
 
 def initialize_qa_chain():
     """
