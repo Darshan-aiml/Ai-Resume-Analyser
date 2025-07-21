@@ -7,6 +7,7 @@ from pydantic import BaseModel
 import rag_core
 import os
 from typing import List
+import re
 
 # Initialize the FastAPI app
 app = FastAPI(
@@ -15,19 +16,19 @@ app = FastAPI(
 )
 
 # Configure CORS (Cross-Origin Resource Sharing)
+# UPDATED: This now uses a regular expression to allow any Vercel deployment URL
+# for your project, which is a more robust solution for preview and production URLs.
 origins = [
     "http://localhost",
     "http://localhost:8080",
     "http://127.0.0.1",
     "http://127.0.0.1:8080",
-    "https://ai-resume-analyser-mtrg-k4egexp0v-darshan-aimls-projects.vercel.app", 
-    # ADDED: This includes the main production URL for your project to prevent CORS errors.
-    "https://ai-resume-analyser-darshan-aiml.vercel.app",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://ai-resume-analyser.*\.vercel\.app", # Allows all your Vercel subdomains
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
