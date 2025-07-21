@@ -21,6 +21,8 @@ origins = [
     "http://127.0.0.1",
     "http://127.0.0.1:8080",
     "https://ai-resume-analyser-mtrg-k4egexp0v-darshan-aimls-projects.vercel.app", 
+    # ADDED: This includes the main production URL for your project to prevent CORS errors.
+    "https://ai-resume-analyser-darshan-aiml.vercel.app",
 ]
 
 app.add_middleware(
