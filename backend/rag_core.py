@@ -12,7 +12,7 @@ from langchain_pinecone import Pinecone as PineconeLangChain
 from langchain.chains import RetrievalQA
 # We need the main pinecone library to manage the index
 import pinecone
-from pinecone.core.client.exceptions import NotFoundException
+from pinecone.core.client.exceptions import ApiException
 
 # --- Configuration ---
 load_dotenv()
@@ -28,31 +28,28 @@ QA_CHAIN = None
 
 def clear_index():
     """
-    Connects to the Pinecone index and deletes all vectors if the index is not empty.
+    Connects to the Pinecone index and deletes all vectors. Handles errors gracefully if the index is already empty.
     """
     print(f"Connecting to Pinecone index '{PINECONE_INDEX_NAME}' to clear all data...")
     pc = pinecone.Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     
     if PINECONE_INDEX_NAME in pc.list_indexes().names():
         index = pc.Index(PINECONE_INDEX_NAME)
-        print("Checking index stats before clearing...")
+        print("Attempting to clear all records from the index...")
         
         try:
-            # Check the number of vectors in the index
-            index_stats = index.describe_index_stats()
-            if index_stats.total_vector_count > 0:
-                print(f"Index contains {index_stats.total_vector_count} vectors. Clearing all records...")
-                index.delete(delete_all=True)
-                print("Index cleared successfully.")
+            index.delete(delete_all=True)
+            print("Index cleared successfully.")
+        except ApiException as e:
+            if e.status == 404:
+                print("Index was already empty or namespace not found, which is okay. Considering it cleared.")
             else:
-                print("Index is already empty. Nothing to clear.")
+                print(f"An unexpected Pinecone API error occurred: {e}")
         except Exception as e:
-            print(f"An error occurred while checking or clearing the index: {e}")
-
+            print(f"A general error occurred while clearing the index: {e}")
     else:
         print(f"Index '{PINECONE_INDEX_NAME}' not found. Nothing to clear.")
 
-    # Reset the global QA chain to force re-initialization on next query
     global QA_CHAIN
     QA_CHAIN = None
 
@@ -61,7 +58,6 @@ def create_vector_store(resumes_path: str):
     Clears the old data, loads new resumes, splits them, creates embeddings, 
     and upserts them to the Pinecone index.
     """
-    # Use the dedicated clear function to ensure a fresh start
     clear_index()
 
     print(f"Loading resumes from '{resumes_path}'...")
