@@ -12,7 +12,7 @@ from langchain_pinecone import Pinecone as PineconeLangChain
 from langchain.chains import RetrievalQA
 # We need the main pinecone library to manage the index
 import pinecone
-from pinecone.core.client.exceptions import ApiException
+
 
 # --- Configuration ---
 load_dotenv()
@@ -25,30 +25,23 @@ if not os.getenv("PINECONE_API_KEY"):
 
 PINECONE_INDEX_NAME = "resume-analyser"
 QA_CHAIN = None
-
 def clear_index():
     """
-    Connects to the Pinecone index and deletes all vectors. Handles errors gracefully if the index is already empty.
+    Connects to the Pinecone index and deletes all vectors. Handles errors gracefully.
     """
     print(f"Connecting to Pinecone index '{PINECONE_INDEX_NAME}' to clear all data...")
     pc = pinecone.Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    
-    if PINECONE_INDEX_NAME in pc.list_indexes().names():
-        index = pc.Index(PINECONE_INDEX_NAME)
-        print("Attempting to clear all records from the index...")
-        
-        try:
+
+    try:
+        index_names = [index.name for index in pc.list_indexes()]
+        if PINECONE_INDEX_NAME in index_names:
+            index = pc.Index(PINECONE_INDEX_NAME)
             index.delete(delete_all=True)
             print("Index cleared successfully.")
-        except ApiException as e:
-            if e.status == 404:
-                print("Index was already empty or namespace not found, which is okay. Considering it cleared.")
-            else:
-                print(f"An unexpected Pinecone API error occurred: {e}")
-        except Exception as e:
-            print(f"A general error occurred while clearing the index: {e}")
-    else:
-        print(f"Index '{PINECONE_INDEX_NAME}' not found. Nothing to clear.")
+        else:
+            print(f"Index '{PINECONE_INDEX_NAME}' not found.")
+    except Exception as e:
+        print(f"Error clearing index: {e}")
 
     global QA_CHAIN
     QA_CHAIN = None
