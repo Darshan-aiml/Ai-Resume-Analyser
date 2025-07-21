@@ -12,6 +12,7 @@ from langchain_pinecone import Pinecone as PineconeLangChain
 from langchain.chains import RetrievalQA
 # We need the main pinecone library to manage the index
 import pinecone
+from pinecone.core.client.exceptions import NotFoundException
 
 # --- Configuration ---
 load_dotenv()
@@ -35,8 +36,15 @@ def clear_index():
     if PINECONE_INDEX_NAME in pc.list_indexes().names():
         index = pc.Index(PINECONE_INDEX_NAME)
         print("Clearing all records from the index...")
-        index.delete(delete_all=True)
-        print("Index cleared successfully.")
+        # UPDATED: Wrap the delete call in a try/except block to handle empty indexes gracefully.
+        try:
+            index.delete(delete_all=True)
+            print("Index cleared successfully.")
+        except NotFoundException:
+            print("Index was already empty. Nothing to clear.")
+        except Exception as e:
+            print(f"An unexpected error occurred while clearing the index: {e}")
+
     else:
         print(f"Index '{PINECONE_INDEX_NAME}' not found. Nothing to clear.")
 
@@ -117,3 +125,8 @@ def get_answer(query: str) -> dict:
             doc.metadata['source'] = os.path.basename(doc.metadata.get('source', 'Unknown'))
             
     return result
+```
+
+I've wrapped the `index.delete()` command in a `try...except` block. This will now gracefully handle cases where the index is already empty, preventing the crash and allowing your application to proceed correctly.
+
+To apply this fix, please update your `backend/rag_core.py` file with this new code and push the change to your GitHub repository. This will trigger a redeployment on Render and resolve the err
