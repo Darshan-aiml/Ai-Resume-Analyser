@@ -12,8 +12,8 @@ from langchain_pinecone import Pinecone as PineconeLangChain
 from langchain.chains import RetrievalQA
 # We need the main pinecone library to manage the index
 import pinecone
-# UPDATED: Using the correct, modern import path for the exception
-from pinecone.exceptions import ApiException
+# UPDATED: Using the correct top-level import for the exception
+from pinecone import ApiException
 
 # --- Configuration ---
 load_dotenv()
