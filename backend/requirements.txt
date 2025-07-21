@@ -8,3 +8,4 @@ pypdf
 langchain-pinecone
 python-multipart
 tqdm
+pinecone-client==2.2.4
