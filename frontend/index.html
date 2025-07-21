@@ -49,7 +49,17 @@
 
             <!-- Left Column: Ingestion -->
             <div class="lg:col-span-2 glass-card p-6 md:p-8 rounded-3xl h-fit">
-                <h2 class="text-2xl font-bold text-white mb-2">Stage 1: Ingestion</h2>
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-2xl font-bold text-white">Stage 1: Ingestion</h2>
+                    <!-- UPDATED: New button style for Reset Session -->
+                    <button id="reset-btn" class="flex items-center gap-2 text-sm bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 font-semibold px-3 py-2 rounded-xl transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                        </svg>
+                        Reset
+                    </button>
+                </div>
                 <p class="text-gray-400 mb-6">Upload a PDF resume to build the knowledge base for this session.</p>
                 
                 <input type="file" id="pdf-upload-input" class="hidden" accept="application/pdf">
@@ -117,6 +127,7 @@
         const askBtn = document.getElementById('ask-btn');
         const answerOutput = document.getElementById('answer-output');
         const retrievedContext = document.getElementById('retrieved-context').querySelector('.prose');
+        const resetBtn = document.getElementById('reset-btn');
 
         // --- Global State ---
         let uploadedFiles = [];
@@ -140,21 +151,44 @@
             processingStatus.style.color = isError ? '#f87171' : '#9ca3af';
         }
 
+        function resetUI() {
+            fileList.innerHTML = '';
+            uploadedFiles = [];
+            processBtn.disabled = true;
+            
+            answerOutput.innerHTML = '<p class="text-gray-400">The AI-generated answer will appear here.</p>';
+            retrievedContext.innerHTML = '<p>The most relevant text chunks from the resume will be shown here after you ask a question.</p>';
+            
+            questionInput.value = '';
+            questionInput.disabled = true;
+            questionInput.placeholder = "Process a resume to enable Q&A";
+            askBtn.disabled = true;
+        }
+
         // --- Event Listeners ---
+        resetBtn.addEventListener('click', async () => {
+            updateStatus('Resetting session...');
+            try {
+                const response = await fetch(`${API_BASE_URL}/reset/`, { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Failed to reset on the backend.');
+                }
+                resetUI();
+                updateStatus('Session has been reset. Please upload a new resume.');
+            } catch (error) {
+                updateStatus(`Error resetting session: ${error.message}`, true);
+            }
+        });
+
         pdfUploadBtn.addEventListener('click', () => pdfUploadInput.click());
         
         pdfUploadInput.addEventListener('change', (event) => {
+            resetUI();
+            updateStatus('New file selected. Click "Process Resume" to begin.');
+            
             uploadedFiles = Array.from(event.target.files);
             fileList.innerHTML = '';
-
-            // NEW: Clear all previous results and statuses when a new file is selected
-            answerOutput.innerHTML = '<p class="text-gray-400">The AI-generated answer will appear here.</p>';
-            retrievedContext.innerHTML = '<p>The most relevant text chunks from the resume will be shown here after you ask a question.</p>';
-            updateStatus('');
-            questionInput.disabled = true;
-            askBtn.disabled = true;
-            questionInput.placeholder = "Process a resume to enable Q&A";
-
 
             if (uploadedFiles.length > 0) {
                 const list = document.createElement('ul');
@@ -185,7 +219,7 @@
             });
 
             try {
-                const response = await fetch(${API_BASE_URL}/process-resumes/, {
+                const response = await fetch(`${API_BASE_URL}/process-resumes/`, {
                     method: 'POST',
                     body: formData,
                 });
@@ -201,7 +235,7 @@
                 questionInput.placeholder = "e.g., Who has experience with PyTorch?";
 
             } catch (error) {
-                updateStatus(Error: ${error.message}, true);
+                updateStatus(`Error: ${error.message}`, true);
             } finally {
                 setButtonLoading(processBtn, false);
             }
@@ -219,7 +253,7 @@
             retrievedContext.innerHTML = '';
             
             try {
-                const response = await fetch(${API_BASE_URL}/ask/, {
+                const response = await fetch(`${API_BASE_URL}/ask/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query: question }),
@@ -230,14 +264,14 @@
                     throw new Error(result.detail || 'An unknown error occurred.');
                 }
 
-                answerOutput.innerHTML = <p>${result.answer.replace(/\n/g, '<br>')}</p>;
+                answerOutput.innerHTML = `<p>${result.answer.replace(/\n/g, '<br>')}</p>`;
 
                 if (result.sources && result.sources.length > 0) {
                     const sourcesHtml = result.sources.map(source => 
-                        <div>
+                        `<div>
                             <p class="font-semibold text-white/80">Source: ${source.metadata.source}</p>
                             <p class="text-gray-400">${source.page_content.substring(0, 250)}...</p>
-                         </div>
+                         </div>`
                     ).join('<hr class="my-2 border-white/10">');
                     retrievedContext.innerHTML = sourcesHtml;
                 } else {
@@ -246,7 +280,7 @@
                 updateStatus('Ready for your next question.');
 
             } catch (error) {
-                answerOutput.innerHTML = <p class="text-red-400">Error: ${error.message}, true);
+                updateStatus(`Error: ${error.message}`, true);
             } finally {
                 setButtonLoading(askBtn, false);
             }
@@ -254,4 +288,4 @@
 
     </script>
 </body>
-</html> 
+</html>
