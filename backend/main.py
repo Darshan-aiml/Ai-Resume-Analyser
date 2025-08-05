@@ -1,13 +1,9 @@
-# backend/main.py
-# This file creates the FastAPI application and its API endpoints.
-
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import rag_core
 import os
 from typing import List
-import re
 
 # Initialize the FastAPI app
 app = FastAPI(
@@ -16,19 +12,19 @@ app = FastAPI(
 )
 
 # Configure CORS (Cross-Origin Resource Sharing)
-# This now uses a regular expression to allow any Vercel deployment URL
-# for your project, which is a more robust solution for preview and production URLs.
+# This allows the frontend (running on a different port) to communicate with this backend.
 origins = [
     "http://localhost",
     "http://localhost:8080",
     "http://127.0.0.1",
     "http://127.0.0.1:8080",
+    # IMPORTANT: Add the URL of your deployed Vercel frontend here
+    "https://ai-resume-analyser-mtrg-k4egexp0v-darshan-aimls-projects.vercel.app", 
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://ai-resume-analyser.*\.vercel\.app", # Allows all your Vercel subdomains
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,41 +41,33 @@ def read_root():
 @app.post("/process-resumes/", summary="Upload and process resumes")
 async def process_resumes(files: List[UploadFile] = File(...)):
     """
-    Endpoint to upload PDF resumes. The files are saved and then
-    processed into a vector store, clearing any old data.
+    Endpoint to upload multiple PDF resumes.
+    The files are saved and then processed into a vector store.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files were uploaded.")
 
+    # In a serverless environment, we need a temporary directory
     resumes_dir = "/tmp/resumes"
     os.makedirs(resumes_dir, exist_ok=True)
     
+    saved_files = []
     for file in files:
         file_path = os.path.join(resumes_dir, file.filename)
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
+        saved_files.append(file_path)
 
     try:
+        # Call the RAG core function to create the vector store
         rag_core.create_vector_store(resumes_dir)
-        return {"message": f"Successfully processed {len(files)} resume(s)."}
+        return {"message": f"Successfully processed {len(saved_files)} resumes."}
     except Exception as e:
+        # Handle potential errors during processing
         raise HTTPException(status_code=500, detail=f"Failed to process resumes: {str(e)}")
 
 
-# Endpoint to reset the session
-@app.post("/reset/", summary="Reset the session")
-async def reset_session():
-    """
-    Endpoint to clear all data from the Pinecone index.
-    This effectively resets the knowledge base for a new user session.
-    """
-    try:
-        rag_core.clear_index()
-        return {"message": "Session reset successfully. The knowledge base is now empty."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reset session: {str(e)}")
-
-
+# Pydantic model for the question request body
 class Question(BaseModel):
     query: str
 
@@ -90,10 +78,12 @@ async def ask_question(question: Question):
     to find relevant context and generate an answer.
     """
     try:
+        # Get the answer and source documents from the RAG core
         answer_data = rag_core.get_answer(question.query)
         return {
             "answer": answer_data.get("result", "No answer found."),
             "sources": answer_data.get("source_documents", [])
         }
     except Exception as e:
+        # Handle errors, e.g., if the vector store doesn't exist yet
         raise HTTPException(status_code=500, detail=str(e))
