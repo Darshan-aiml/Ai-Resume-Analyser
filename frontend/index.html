@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,6 +36,8 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
     </style>
+    <title>RAG Resume QnA Bot</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-black text-gray-200 antialiased">
 
@@ -49,17 +52,7 @@
 
             <!-- Left Column: Ingestion -->
             <div class="lg:col-span-2 glass-card p-6 md:p-8 rounded-3xl h-fit">
-                <div class="flex justify-between items-center mb-2">
-                    <h2 class="text-2xl font-bold text-white">Stage 1: Ingestion</h2>
-                    <!-- UPDATED: New button style for Reset Session -->
-                    <button id="reset-btn" class="flex items-center gap-2 text-sm bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 font-semibold px-3 py-2 rounded-xl transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                            <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
-                            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
-                        </svg>
-                        Reset
-                    </button>
-                </div>
+                <h2 class="text-2xl font-bold text-white mb-2">Stage 1: Ingestion</h2>
                 <p class="text-gray-400 mb-6">Upload a PDF resume to build the knowledge base for this session.</p>
                 
                 <input type="file" id="pdf-upload-input" class="hidden" accept="application/pdf">
@@ -76,7 +69,43 @@
                 </button>
 
                 <div id="processing-status" class="text-gray-400 mt-4 text-sm text-center"></div>
+
+<body class="bg-gray-100 text-gray-900">
+    <div class="max-w-4xl mx-auto p-6">
+        <h1 class="text-3xl font-bold mb-4">RAG Resume QnA Bot</h1>
+
+        <!-- File Upload -->
+        <div class="mb-6">
+            <label class="block mb-2 font-semibold">Upload Resume (PDF):</label>
+            <input id="pdf-upload" type="file" accept="application/pdf" class="mb-2">
+            <ul id="file-list" class="text-sm text-gray-600"></ul>
+            <button id="process-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" disabled>Process Resume</button>
+        </div>
+
+        <!-- Reset Button -->
+        <div class="mb-6">
+            <button id="reset-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-full flex items-center justify-center transition-all duration-300">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                </svg>
+                <span>Reset for New Resume</span>
+            </button>
+        </div>
+
+        <!-- QnA Section -->
+        <div class="mb-6">
+            <label class="block mb-2 font-semibold">Ask a Question:</label>
+            <input id="question-input" type="text" class="w-full p-2 border rounded mb-2" placeholder="Process a resume to enable Q&A" disabled>
+            <button id="ask-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded" disabled>Ask</button>
+        </div>
+
+        <!-- Output -->
+        <div class="mb-4">
+            <h2 class="text-xl font-semibold">Answer:</h2>
+            <div id="answer-output" class="bg-white p-4 rounded shadow">
+                <p class="text-gray-400">The AI-generated answer will appear here.</p>
             </div>
+        </div>
 
             <!-- Right Column: Q&A -->
             <div class="lg:col-span-3 glass-card p-6 md:p-8 rounded-3xl">
@@ -98,6 +127,10 @@
                         <p>The most relevant text chunks from the resume will be shown here after you ask a question.</p>
                     </div>
                 </div>
+        <div>
+            <h2 class="text-xl font-semibold">Relevant Resume Chunks:</h2>
+            <div id="retrieved-context" class="bg-white p-4 rounded shadow">
+                <p>The most relevant text chunks from the resume will be shown here after you ask a question.</p>
             </div>
         </main>
 
@@ -110,24 +143,31 @@
                 </a>
             </p>
         </footer>
+        </div>
 
+        <!-- Status -->
+        <div id="status" class="mt-4 text-sm"></div>
     </div>
 
     <script>
         // --- Configuration ---
         const API_BASE_URL = 'https://ai-resume-analyzer-backend-gy0a.onrender.com';
+        const API_BASE_URL = "http://localhost:8000"; // Change if deployed
 
         // --- DOM Element Selection ---
         const pdfUploadInput = document.getElementById('pdf-upload-input');
         const pdfUploadBtn = document.getElementById('pdf-upload-btn');
+        const pdfUploadInput = document.getElementById('pdf-upload');
         const fileList = document.getElementById('file-list');
         const processBtn = document.getElementById('process-btn');
         const processingStatus = document.getElementById('processing-status');
         const questionInput = document.getElementById('question-input');
         const askBtn = document.getElementById('ask-btn');
+        const questionInput = document.getElementById('question-input');
         const answerOutput = document.getElementById('answer-output');
         const retrievedContext = document.getElementById('retrieved-context').querySelector('.prose');
-        const resetBtn = document.getElementById('reset-btn');
+        const retrievedContext = document.getElementById('retrieved-context');
+        const status = document.getElementById('status');
 
         // --- Global State ---
         let uploadedFiles = [];
@@ -149,46 +189,25 @@
         function updateStatus(message, isError = false) {
             processingStatus.textContent = message;
             processingStatus.style.color = isError ? '#f87171' : '#9ca3af';
-        }
-
-        function resetUI() {
-            fileList.innerHTML = '';
-            uploadedFiles = [];
-            processBtn.disabled = true;
-            
-            answerOutput.innerHTML = '<p class="text-gray-400">The AI-generated answer will appear here.</p>';
-            retrievedContext.innerHTML = '<p>The most relevant text chunks from the resume will be shown here after you ask a question.</p>';
-            
-            questionInput.value = '';
-            questionInput.disabled = true;
-            questionInput.placeholder = "Process a resume to enable Q&A";
-            askBtn.disabled = true;
+            status.textContent = message;
+            status.className = isError ? 'text-red-600' : 'text-green-600';
         }
 
         // --- Event Listeners ---
-        resetBtn.addEventListener('click', async () => {
-            updateStatus('Resetting session...');
-            try {
-                const response = await fetch(${API_BASE_URL}/reset/, { method: 'POST' });
-                const result = await response.json();
-                if (!response.ok) {
-                    throw new Error(result.detail || 'Failed to reset on the backend.');
-                }
-                resetUI();
-                updateStatus('Session has been reset. Please upload a new resume.');
-            } catch (error) {
-                updateStatus(Error resetting session: ${error.message}, true);
-            }
-        });
-
         pdfUploadBtn.addEventListener('click', () => pdfUploadInput.click());
         
         pdfUploadInput.addEventListener('change', (event) => {
-            resetUI();
-            updateStatus('New file selected. Click "Process Resume" to begin.');
-            
             uploadedFiles = Array.from(event.target.files);
             fileList.innerHTML = '';
+
+            // NEW: Clear all previous results and statuses when a new file is selected
+            answerOutput.innerHTML = '<p class="text-gray-400">The AI-generated answer will appear here.</p>';
+            retrievedContext.innerHTML = '<p>The most relevant text chunks from the resume will be shown here after you ask a question.</p>';
+            updateStatus('');
+            questionInput.disabled = true;
+            askBtn.disabled = true;
+            questionInput.placeholder = "Process a resume to enable Q&A";
+
 
             if (uploadedFiles.length > 0) {
                 const list = document.createElement('ul');
@@ -203,6 +222,10 @@
             } else {
                 processBtn.disabled = true;
             }
+        pdfUploadInput.addEventListener('change', () => {
+            uploadedFiles = Array.from(pdfUploadInput.files);
+            fileList.innerHTML = uploadedFiles.map(file => `<li>${file.name}</li>`).join('');
+            processBtn.disabled = uploadedFiles.length === 0;
         });
 
         processBtn.addEventListener('click', async () => {
@@ -213,13 +236,18 @@
             setButtonLoading(processBtn, true);
             updateStatus('Uploading and processing resume...');
 
+            if (uploadedFiles.length === 0) return;
             const formData = new FormData();
             uploadedFiles.forEach(file => {
                 formData.append('files', file);
             });
+            formData.append('file', uploadedFiles[0]);
+
+            updateStatus("Uploading and processing resume...");
 
             try {
-                const response = await fetch(${API_BASE_URL}/process-resumes/, {
+                const response = await fetch(`${API_BASE_URL}/process-resumes/`, {
+                const response = await fetch(`${API_BASE_URL}/upload/`, {
                     method: 'POST',
                     body: formData,
                 });
@@ -228,16 +256,20 @@
                 if (!response.ok) {
                     throw new Error(result.detail || 'An unknown error occurred.');
                 }
+                if (!response.ok) throw new Error("Failed to upload and process resume");
 
                 updateStatus(result.message);
+                updateStatus("Resume uploaded and processed successfully.");
                 questionInput.disabled = false;
                 askBtn.disabled = false;
                 questionInput.placeholder = "e.g., Who has experience with PyTorch?";
 
             } catch (error) {
-                updateStatus(Error: ${error.message}, true);
+                updateStatus(`Error: ${error.message}`, true);
             } finally {
                 setButtonLoading(processBtn, false);
+            } catch (err) {
+                updateStatus(err.message, true);
             }
         });
 
@@ -246,14 +278,47 @@
             if (!question) {
                 answerOutput.innerHTML = '<p class="text-red-400">Please enter a question.</p>';
                 return;
+            if (!question) return;
+
+            updateStatus("Getting answer from AI...");
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/query/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ question }),
+                });
+
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.detail || "Failed to get response");
+
+                answerOutput.innerHTML = `<p>${result.answer}</p>`;
+                retrievedContext.innerHTML = result.context.map(chunk => `<p class="mb-2">${chunk}</p>`).join('');
+
+                updateStatus("Answer generated successfully.");
+            } catch (err) {
+                updateStatus(err.message, true);
             }
+        });
+
+        // RESET BUTTON LOGIC
+        const resetBtn = document.getElementById('reset-btn');
+
+        resetBtn.addEventListener('click', async () => {
+            if (!confirm("Are you sure you want to reset and remove all uploaded resume data?")) return;
+
+            resetBtn.disabled = true;
+            updateStatus("Resetting session...");
 
             setButtonLoading(askBtn, true);
             answerOutput.innerHTML = '<p class="text-gray-400">Thinking...</p>';
             retrievedContext.innerHTML = '';
             
             try {
-                const response = await fetch(${API_BASE_URL}/ask/, {
+                const response = await fetch(`${API_BASE_URL}/ask/`, {
+                const response = await fetch(`${API_BASE_URL}/reset-index/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query: question }),
@@ -262,30 +327,46 @@
                 const result = await response.json();
                 if (!response.ok) {
                     throw new Error(result.detail || 'An unknown error occurred.');
+                    throw new Error(result.detail || "Failed to reset session.");
                 }
 
-                answerOutput.innerHTML = <p>${result.answer.replace(/\n/g, '<br>')}</p>;
+                answerOutput.innerHTML = `<p>${result.answer.replace(/\n/g, '<br>')}</p>`;
 
                 if (result.sources && result.sources.length > 0) {
                     const sourcesHtml = result.sources.map(source => 
-                        <div>
+                        `<div>
                             <p class="font-semibold text-white/80">Source: ${source.metadata.source}</p>
                             <p class="text-gray-400">${source.page_content.substring(0, 250)}...</p>
-                         </div>
+                         </div>`
                     ).join('<hr class="my-2 border-white/10">');
                     retrievedContext.innerHTML = sourcesHtml;
                 } else {
                     retrievedContext.innerHTML = '<p>No specific source documents were retrieved.</p>';
                 }
                 updateStatus('Ready for your next question.');
+                updateStatus(result.message || "Session reset successfully.");
+
+                uploadedFiles = [];
+                pdfUploadInput.value = '';
+                fileList.innerHTML = '';
+                answerOutput.innerHTML = '<p class="text-gray-400">The AI-generated answer will appear here.</p>';
+                retrievedContext.innerHTML = '<p>The most relevant text chunks from the resume will be shown here after you ask a question.</p>';
+                questionInput.disabled = true;
+                askBtn.disabled = true;
+                processBtn.disabled = true;
+                questionInput.value = '';
+                questionInput.placeholder = 'Process a resume to enable Q&A';
 
             } catch (error) {
-                updateStatus(Error: ${error.message}, true);
+                answerOutput.innerHTML = `<p class="text-red-400">Error: ${error.message}`, true);
+                updateStatus(`Error: ${error.message}`, true);
             } finally {
                 setButtonLoading(askBtn, false);
+                resetBtn.disabled = false;
             }
         });
 
     </script>
 </body>
+
 </html>
